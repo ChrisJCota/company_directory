@@ -1,21 +1,9 @@
-const inquirer = require('inquirer');
 
-const express = require('express');
+const inquirer = require('inquirer');
 const mysql = require('mysql2');
 
+const db = require('./connections.js');
 
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
-
-const db = mysql.createConnection(
-    {
-        host: 'localhost',
-        user: 'root',
-        password: '',
-        database: 'workplace_db'
-    },
-    console.log(`Connected to the staff_db database.`)
-);
 
 const promptUser = () => {
     return inquirer.prompt([
@@ -23,10 +11,10 @@ const promptUser = () => {
             type: 'list',
             name: 'options',
             message: 'What would you like to do?',
-            choices: ['View all employees', 'Add employee', 'Update employee role', 'View all roles', 'Add role', 'View all departments', 'Add department', 'Quit']
+            choices: ["View all departments", "View all roles", "View all employees", "Add department", "Add role", "Add employee", "Update employee role", 'Quit']
         }
     ]).then((data) => {
-        switch (data.selection) {
+        switch (data.options) {
             case "View all departments":
                 viewAllDepartments();
                 break;
@@ -61,27 +49,28 @@ const promptUser = () => {
 promptUser();
 
 const viewAllEmployees = () => {
-    db.query(`
-    SELECT
-    employees_with_managers.id AS employee_id,
-    employees_with_managers.first_name,
-    employees_with_managers.last_name,
-    employee_info.title,
-    employee_info.salary,
-    employee_info.department_name,
-    employees_with_managers.manager_name
-    FROM employee_info
-    JOIN employees_with_managers on employee_info.role_id = employees_with_managers.role_id;
-    `, function (err, results) {
-        console.log(`\n`);
-        console.table(results);
+    const query = `SELECT 
+  employee.id AS "Employee ID", 
+  CONCAT(employee.first_name, ' ', employee.last_name) AS "Employee Name", 
+  role.title AS Title, 
+  department.name AS Department, 
+  role.salary AS Salary, 
+  IFNULL(CONCAT(manager.first_name, ' ', manager.last_name), 'None') AS "Manager Name"
+  FROM employee 
+  JOIN role 
+  ON employee.role_id = role.id 
+  JOIN department 
+  ON role.department_id = department.id
+  LEFT JOIN employee AS manager
+  ON employee.manager_id = manager.id`;
+    db.execute(query, (err, res) => {
+        console.table(res);
         promptUser();
-    })
+    });
 }
 
 const viewAllDepartments = () => {
-    db.query(`SELECT * FROM department`, function (err, results) {
-        console.log(`\n`);
+    db.execute(`SELECT * FROM department`, function (err, results) {
         console.table(results);
         promptUser();
     })
@@ -89,7 +78,6 @@ const viewAllDepartments = () => {
 
 const viewAllRoles = () => {
     db.query(`SELECT * FROM role`, function (err, results) {
-        console.log(`\n`);
         console.table(results);
         promptUser();
     })
@@ -105,7 +93,7 @@ const addDepartment = () => {
             }
         ]).then((data) => {
             db.query(`INSERT INTO department (name) VALUES (?)`, data.name, (err, results) => {
-                console.log("\nNew department added!");
+                console.log("New department added!");
                 viewAllDepartments();
             })
         })
@@ -122,26 +110,32 @@ const addRole = () => {
             ([{
                 type: 'input',
                 message: 'What role would you like to add?',
-                name: 'name'
-            }, {
-                type: 'input',
-                message: "What is the salary for the new role?",
-                name: 'department',
+                name: 'title'
+            },
+            {
+                type: 'number',
+                message: 'What is the salary for the new role?',
+                name: 'salary'
+            },
+            {
+                type: 'list',
+                message: "What is the department for the new role?",
+                name: 'department_id',
                 choices: departmentArr
             }
             ]).then((data) => {
-                db.query(`SELECT id FROM department WHERE department.name = ?`, data.department, (err, results) => {
+                db.query(`SELECT id FROM department WHERE department.name = ?`, data.department_id, (err, results) => {
                     let department_id = results[0].id;
+                    db.query(`INSERT INTO role(title, salary, department_id)
+                VALUES (?,?,?)`, [data.title, data.salary, department_id], (err, results) => {
+                        err ? console.log(err) : viewAllRoles()
 
-
-                    db.query(`INSERT INTO role (title, salary, department_id) VALUES (?, ?, ?)`, [data.title, data.salary, department_id], (err, results) => {
-                        console.log("\nNew role added!")
-                        viewAllRoles();
                     })
-                })
+                });
             })
     })
 }
+
 const addEmployee = () => {
     const roleArr = [];
     const employeeArr = [];
@@ -187,6 +181,7 @@ const addEmployee = () => {
                 db.query(`SELECT id FROM role WHERE role.title = ?`, data.role, (err, results) => {
                     role_id = results[0].id;
                 });
+                //query is asyncronous, put in callback of query
                 if (data.has_manager === "Yes") {
                     return inquirer.prompt([
                         {
@@ -213,10 +208,11 @@ const addEmployee = () => {
                     manager = null;
                     db.query(`SELECT id FROM role WHERE role.title = ?`, roleName, (err, results) => {
                         role_id = results[0].id;
-                        db.query(`SELECT INTO employee (first_name, last_name, role_id, manager_id)
+                        db.query(`INSERT INTO employee (first_name, last_name, role_id, manager_id)
                         VALUEs (?,?,?,?)`, [data.first_name, data.last_name, role_id, manager], (err, results) => {
-                            console.log("\nNew employee added!");
-                            viewAllEmployees();
+                            console.log("********************")
+                            err ? console.log(err) : viewAllEmployees()
+
                         })
 
                     })
