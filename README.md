@@ -1,7 +1,7 @@
 # company_directory
 
 ## Description
-This project lets you open and add, change and modify a company directory using a SQL database and node to run the application
+This project lets you open, add, and modify a company directory using a SQL database and node to run the application
 
 ## instructions
 1. download application
